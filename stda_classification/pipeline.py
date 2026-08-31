@@ -5,6 +5,7 @@ from typing import Iterable
 
 import pandas as pd
 from scipy.io import loadmat
+from sklearn.base import clone
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -69,7 +70,7 @@ def classify_patients_supervised(
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    classifier = SUPPORTED_SUPERVISED_MODELS[model]
+    classifier = clone(SUPPORTED_SUPERVISED_MODELS[model])
     classifier.fit(X_train_scaled, y_train)
     y_pred = classifier.predict(X_test_scaled)
 
@@ -79,9 +80,12 @@ def classify_patients_supervised(
         "accuracy": float(accuracy_score(y_test, y_pred)),
     }
 
-    if hasattr(classifier, "predict_proba"):
+    if hasattr(classifier, "predict_proba") and pd.Series(y_test).nunique() > 1:
         y_score = classifier.predict_proba(X_test_scaled)[:, 1]
-        metrics["roc_auc"] = float(roc_auc_score(y_test, y_score))
+        try:
+            metrics["roc_auc"] = float(roc_auc_score(y_test, y_score))
+        except ValueError:
+            pass
 
     return metrics
 
@@ -97,6 +101,10 @@ def cluster_patients_unsupervised(
     missing = [col for col in features if col not in dataframe.columns]
     if missing:
         raise ValueError(f"Missing feature columns: {', '.join(missing)}")
+    if n_clusters < 1:
+        raise ValueError("n_clusters must be at least 1.")
+    if n_clusters > len(dataframe):
+        raise ValueError("n_clusters cannot exceed the number of rows in dataframe.")
 
     X = dataframe[features]
     scaler = StandardScaler()
