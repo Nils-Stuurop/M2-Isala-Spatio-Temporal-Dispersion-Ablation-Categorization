@@ -1,8 +1,10 @@
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
 from stda_classification.pipeline import (
+    SUPPORTED_SUPERVISED_MODELS,
     classify_patients_supervised,
     cluster_patients_unsupervised,
     quantify_recurrence_by_group,
@@ -36,6 +38,21 @@ class TestPipeline(unittest.TestCase):
         summary = quantify_recurrence_by_group(grouped)
         self.assertIn("recurrence_rate", summary.columns)
         self.assertEqual(summary["total_patients"].sum(), len(self.df))
+
+    def test_supervised_uses_fresh_model_instance(self):
+        classify_patients_supervised(self.df, self.features, model="random_forest")
+        self.assertFalse(hasattr(SUPPORTED_SUPERVISED_MODELS["random_forest"], "estimators_"))
+
+    def test_supervised_handles_roc_auc_value_error(self):
+        with patch("stda_classification.pipeline.roc_auc_score", side_effect=ValueError):
+            metrics = classify_patients_supervised(self.df, self.features)
+        self.assertIn("accuracy", metrics)
+
+    def test_unsupervised_validates_n_clusters(self):
+        with self.assertRaisesRegex(ValueError, "at least 1"):
+            cluster_patients_unsupervised(self.df, self.features, n_clusters=0)
+        with self.assertRaisesRegex(ValueError, "cannot exceed"):
+            cluster_patients_unsupervised(self.df, self.features, n_clusters=len(self.df) + 1)
 
 
 if __name__ == "__main__":
